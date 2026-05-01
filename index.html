@@ -3,112 +3,266 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Brownian Noise</title>
+<title>Noise Generator</title>
 <style>
-  body {
-    font-family: system-ui, sans-serif;
-    background: #111;
-    color: #eee;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    margin: 0;
-  }
-  .panel {
-    background: #1b1b1b;
-    padding: 20px;
-    border-radius: 12px;
-    width: 300px;
-  }
-  .control { margin-bottom: 12px; }
-  label { display:flex; justify-content:space-between; font-size:13px; }
-  input { width:100%; }
-  button {
-    width:100%; padding:10px;
-    border:none; border-radius:8px;
-    background:#4a90e2; color:#fff;
-    font-weight:600;
-  }
+body {
+  font-family: system-ui, sans-serif;
+  background:#111; color:#eee;
+  display:flex; justify-content:center; align-items:center;
+  height:100vh; margin:0;
+}
+.panel {
+  background:#1b1b1b; padding:20px;
+  border-radius:12px; width:340px;
+}
+.control { margin-bottom:12px; }
+label { display:flex; justify-content:space-between; font-size:13px; }
+input, select { width:100%; }
+button {
+  width:100%; padding:10px;
+  border:none; border-radius:8px;
+  background:#4a90e2; color:#fff; font-weight:600;
+}
 </style>
 </head>
 <body>
 <div class="panel">
-  <div class="control">
-    <label>Volume <span id="gainVal">0.2</span></label>
-    <input id="gain" type="range" min="0" max="1" step="0.01" value="0.2">
-  </div>
 
-  <div class="control">
-    <label>Drift <span id="driftVal">0.02</span></label>
-    <input id="drift" type="range" min="0.001" max="0.1" step="0.001" value="0.02">
-  </div>
+<div class="control">
+<label>Noise Type</label>
+<select id="type">
+<option>white</option>
+<option>pink</option>
+<option>brown</option>
+<option>blue</option>
+<option>violet</option>
+</select>
+</div>
 
-  <button id="toggle">Start</button>
+<div class="control">
+<label>Filter Mode</label>
+<select id="mode">
+<option value="chain">HP → LP</option>
+<option value="bandpass">Bandpass</option>
+</select>
+</div>
+
+<div class="control">
+<label>HP Cutoff <span id="hpVal">50</span></label>
+<input id="hp" type="range" min="20" max="20000" value="50">
+</div>
+
+<div class="control">
+<label>LP Cutoff <span id="lpVal">5000</span></label>
+<input id="lp" type="range" min="20" max="20000" value="5000">
+</div>
+
+<div class="control">
+<label>Q <span id="qVal">1</span></label>
+<input id="q" type="range" min="0.1" max="20" step="0.1" value="1">
+</div>
+
+<div class="control">
+<label>LFO Target</label>
+<select id="lfoTarget">
+<option value="off">off</option>
+<option value="hp">HP</option>
+<option value="lp">LP</option>
+<option value="both">both</option>
+</select>
+</div>
+
+<div class="control">
+<label>LFO Rate (Hz) <span id="rateVal">0.5</span></label>
+<input id="rate" type="range" min="0.01" max="10" step="0.01" value="0.5">
+</div>
+
+<div class="control">
+<label>LFO Depth (Hz) <span id="depthVal">500</span></label>
+<input id="depth" type="range" min="0" max="5000" step="1" value="500">
+</div>
+
+<div class="control">
+<label>Volume <span id="gainVal">0.2</span></label>
+<input id="gain" type="range" min="0" max="1" step="0.01" value="0.2">
+</div>
+
+<div class="control">
+<label>Fade In (ms) <span id="attackVal">50</span></label>
+<input id="attack" type="range" min="0" max="2000" step="10" value="50">
+</div>
+
+<div class="control">
+<label>Fade Out (ms) <span id="releaseVal">100</span></label>
+<input id="release" type="range" min="0" max="3000" step="10" value="100">
+</div>
+
+<button id="toggle">Start</button>
+
 </div>
 
 <script>
-let audioCtx, processor, gainNode;
+let ctx, proc, gainNode, hpFilter, lpFilter, bpFilter;
+let lfo, lfoGain;
 let running = false;
 
-let lastOut = 0;
+let lastBrown = 0;
+let type = 'white';
 let drift = 0.02;
 
-const gainSlider = document.getElementById('gain');
-const driftSlider = document.getElementById('drift');
-const gainVal = document.getElementById('gainVal');
-const driftVal = document.getElementById('driftVal');
-const toggleBtn = document.getElementById('toggle');
+let attack = 0.05, release = 0.1;
 
-gainVal.textContent = gainSlider.value;
-driftVal.textContent = driftSlider.value;
+// pink
+let b0=0,b1=0,b2=0;
 
-gainSlider.oninput = () => {
-  gainVal.textContent = gainSlider.value;
-  if (gainNode) gainNode.gain.value = gainSlider.value;
+const $ = id => document.getElementById(id);
+
+// UI bindings
+$('gain').oninput = () => $('gainVal').textContent = $('gain').value;
+$('attack').oninput = () => {
+  attack = $('attack').value/1000;
+  $('attackVal').textContent = $('attack').value;
+};
+$('release').oninput = () => {
+  release = $('release').value/1000;
+  $('releaseVal').textContent = $('release').value;
+};
+$('type').onchange = () => type = $('type').value;
+
+$('hp').oninput = () => {
+  $('hpVal').textContent = $('hp').value;
+  if (hpFilter) hpFilter.frequency.value = $('hp').value;
+};
+$('lp').oninput = () => {
+  $('lpVal').textContent = $('lp').value;
+  if (lpFilter) lpFilter.frequency.value = $('lp').value;
+};
+$('q').oninput = () => {
+  $('qVal').textContent = $('q').value;
+  if (hpFilter) hpFilter.Q.value = $('q').value;
+  if (lpFilter) lpFilter.Q.value = $('q').value;
+  if (bpFilter) bpFilter.Q.value = $('q').value;
 };
 
-driftSlider.oninput = () => {
-  drift = parseFloat(driftSlider.value);
-  driftVal.textContent = driftSlider.value;
+$('rate').oninput = () => {
+  $('rateVal').textContent = $('rate').value;
+  if (lfo) lfo.frequency.value = $('rate').value;
+};
+$('depth').oninput = () => {
+  $('depthVal').textContent = $('depth').value;
+  if (lfoGain) lfoGain.gain.value = $('depth').value;
 };
 
-function initAudio() {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function white(){ return Math.random()*2-1; }
 
-  processor = audioCtx.createScriptProcessor(1024, 1, 1);
+function pink(w){
+  b0=0.99765*b0+w*0.099046;
+  b1=0.963*b1+w*0.2965164;
+  b2=0.57*b2+w*1.0526913;
+  return b0+b1+b2+w*0.1848;
+}
 
-  processor.onaudioprocess = (e) => {
-    const output = e.outputBuffer.getChannelData(0);
+function sample(w){
+  switch(type){
+    case 'white': return w;
+    case 'pink': return pink(w);
+    case 'brown':
+      lastBrown = Math.max(-1, Math.min(1, lastBrown + drift*w));
+      return lastBrown;
+    case 'blue': return w - lastBrown;
+    case 'violet': return (w - lastBrown)*2;
+    default: return w;
+  }
+}
 
-    for (let i = 0; i < output.length; i++) {
-      const white = Math.random() * 2 - 1;
-      lastOut += drift * white;
+function init(){
+  ctx = new (window.AudioContext||window.webkitAudioContext)();
 
-      // clamp to avoid runaway
-      lastOut = Math.max(-1, Math.min(1, lastOut));
-
-      output[i] = lastOut;
+  proc = ctx.createScriptProcessor(1024,1,1);
+  proc.onaudioprocess = e=>{
+    const out = e.outputBuffer.getChannelData(0);
+    for(let i=0;i<out.length;i++){
+      out[i] = sample(white());
     }
   };
 
-  gainNode = audioCtx.createGain();
-  gainNode.gain.value = gainSlider.value;
+  hpFilter = ctx.createBiquadFilter();
+  hpFilter.type = "highpass";
 
-  processor.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
+  lpFilter = ctx.createBiquadFilter();
+  lpFilter.type = "lowpass";
+
+  bpFilter = ctx.createBiquadFilter();
+  bpFilter.type = "bandpass";
+
+  gainNode = ctx.createGain();
+  gainNode.gain.value = 0;
+
+  // LFO
+  lfo = ctx.createOscillator();
+  lfo.type = "sine";
+  lfo.frequency.value = $('rate').value;
+
+  lfoGain = ctx.createGain();
+  lfoGain.gain.value = $('depth').value;
+
+  lfo.connect(lfoGain);
+
+  // routing
+  proc.connect(hpFilter);
+  hpFilter.connect(lpFilter);
+  lpFilter.connect(gainNode);
+
+  proc.connect(bpFilter);
+
+  bpFilter.connect(gainNode);
+
+  gainNode.connect(ctx.destination);
+
+  lfo.start();
 }
 
-toggleBtn.onclick = async () => {
-  if (!running) {
-    if (!audioCtx) initAudio();
-    await audioCtx.resume();
+function updateRouting(){
+  const target = $('lfoTarget').value;
+
+  lfoGain.disconnect();
+
+  if(target === "hp") lfoGain.connect(hpFilter.frequency);
+  if(target === "lp") lfoGain.connect(lpFilter.frequency);
+  if(target === "both"){
+    lfoGain.connect(hpFilter.frequency);
+    lfoGain.connect(lpFilter.frequency);
+  }
+}
+
+$('lfoTarget').onchange = updateRouting;
+
+function fadeIn(){
+  const now = ctx.currentTime;
+  gainNode.gain.cancelScheduledValues(now);
+  gainNode.gain.setValueAtTime(0, now);
+  gainNode.gain.linearRampToValueAtTime(parseFloat($('gain').value), now+attack);
+}
+
+function fadeOut(){
+  const now = ctx.currentTime;
+  gainNode.gain.cancelScheduledValues(now);
+  gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+  gainNode.gain.linearRampToValueAtTime(0, now+release);
+}
+
+$('toggle').onclick = async ()=>{
+  if(!running){
+    if(!ctx){ init(); updateRouting(); }
+    await ctx.resume();
+    fadeIn();
     running = true;
-    toggleBtn.textContent = "Stop";
+    $('toggle').textContent="Stop";
   } else {
-    await audioCtx.suspend();
+    fadeOut();
     running = false;
-    toggleBtn.textContent = "Start";
+    $('toggle').textContent="Start";
+    setTimeout(()=>ctx.suspend(), release*1000+20);
   }
 };
 </script>
