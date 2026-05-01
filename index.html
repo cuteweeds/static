@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brownian Noise</title>
+<style>
+  body {
+    font-family: system-ui, sans-serif;
+    background: #111;
+    color: #eee;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+  }
+  .panel {
+    background: #1b1b1b;
+    padding: 20px;
+    border-radius: 12px;
+    width: 300px;
+  }
+  .control { margin-bottom: 12px; }
+  label { display:flex; justify-content:space-between; font-size:13px; }
+  input { width:100%; }
+  button {
+    width:100%; padding:10px;
+    border:none; border-radius:8px;
+    background:#4a90e2; color:#fff;
+    font-weight:600;
+  }
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="control">
+    <label>Volume <span id="gainVal">0.2</span></label>
+    <input id="gain" type="range" min="0" max="1" step="0.01" value="0.2">
+  </div>
+
+  <div class="control">
+    <label>Drift <span id="driftVal">0.02</span></label>
+    <input id="drift" type="range" min="0.001" max="0.1" step="0.001" value="0.02">
+  </div>
+
+  <button id="toggle">Start</button>
+</div>
+
+<script>
+let audioCtx, processor, gainNode;
+let running = false;
+
+let lastOut = 0;
+let drift = 0.02;
+
+const gainSlider = document.getElementById('gain');
+const driftSlider = document.getElementById('drift');
+const gainVal = document.getElementById('gainVal');
+const driftVal = document.getElementById('driftVal');
+const toggleBtn = document.getElementById('toggle');
+
+gainVal.textContent = gainSlider.value;
+driftVal.textContent = driftSlider.value;
+
+gainSlider.oninput = () => {
+  gainVal.textContent = gainSlider.value;
+  if (gainNode) gainNode.gain.value = gainSlider.value;
+};
+
+driftSlider.oninput = () => {
+  drift = parseFloat(driftSlider.value);
+  driftVal.textContent = driftSlider.value;
+};
+
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  processor = audioCtx.createScriptProcessor(1024, 1, 1);
+
+  processor.onaudioprocess = (e) => {
+    const output = e.outputBuffer.getChannelData(0);
+
+    for (let i = 0; i < output.length; i++) {
+      const white = Math.random() * 2 - 1;
+      lastOut += drift * white;
+
+      // clamp to avoid runaway
+      lastOut = Math.max(-1, Math.min(1, lastOut));
+
+      output[i] = lastOut;
+    }
+  };
+
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = gainSlider.value;
+
+  processor.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+}
+
+toggleBtn.onclick = async () => {
+  if (!running) {
+    if (!audioCtx) initAudio();
+    await audioCtx.resume();
+    running = true;
+    toggleBtn.textContent = "Stop";
+  } else {
+    await audioCtx.suspend();
+    running = false;
+    toggleBtn.textContent = "Start";
+  }
+};
+</script>
+</body>
+</html>
