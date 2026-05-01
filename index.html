@@ -15,11 +15,19 @@
     height: 100vh;
     margin: 0;
   }
+  .column {
+    display: flex;
+    flex-direction: column;
+  }
   .panel {
     background: #1b1b1b;
     padding: 20px;
     border-radius: 12px;
     width: 300px;
+  }
+  .transparent {
+    background: #111;
+    clear: left;
   }
   .control { margin-bottom: 12px; }
   label { display:flex; justify-content:space-between; font-size:13px; }
@@ -30,29 +38,50 @@
     background:#4a90e2; color:#fff;
     font-weight:600;
   }
+  .nav {
+    background: #111;
+    color: #4a90e2;
+    text-decoration: none;
+    font-weight:400;
+    font-size: 84%;
+  }
 </style>
 </head>
 <body>
-<div class="panel">
-  <div class="control">
-    <label>Volume <span id="gainVal">0.2</span></label>
-    <input id="gain" type="range" min="0" max="1" step="0.01" value="0.2">
+
+<div class="column">
+
+  <div class="panel">
+    <div class="control">
+      <label>Volume <span id="gainVal">0.2</span></label>
+      <input id="gain" type="range" min="0" max="1" step="0.01" value="0.2">
+    </div>
+
+    <div class="control">
+      <label>Drift <span id="driftVal">0.02</span></label>
+      <input id="drift" type="range" min="0.001" max="0.1" step="0.001" value="0.02">
+    </div>
+
+    <button id="toggle">Start</button>
   </div>
 
-  <div class="control">
-    <label>Drift <span id="driftVal">0.02</span></label>
-    <input id="drift" type="range" min="0.001" max="0.1" step="0.001" value="0.02">
+  <div class="panel transparent nav">
+    <a class="nav" href="advanced.html">Advanced</a>
   </div>
 
-  <button id="toggle">Start</button>
 </div>
+
+  
 
 <script>
 let audioCtx, processor, gainNode;
 let running = false;
 
 let lastOut = 0;
+let lastIn = 0;        // NEW: for DC blocker
 let drift = 0.02;
+
+const dcBlock = 0.995; // NEW: high-pass coefficient
 
 const gainSlider = document.getElementById('gain');
 const driftSlider = document.getElementById('drift');
@@ -78,19 +107,31 @@ function initAudio() {
 
   processor = audioCtx.createScriptProcessor(1024, 1, 1);
 
-  processor.onaudioprocess = (e) => {
-    const output = e.outputBuffer.getChannelData(0);
+let brownState = 0; // integrator state (true Brownian)
+let x1 = 0;         // previous input to filter
+let y1 = 0;         // previous output from filter
+const R = 0.995;
 
-    for (let i = 0; i < output.length; i++) {
-      const white = Math.random() * 2 - 1;
-      lastOut += drift * white;
+processor.onaudioprocess = (e) => {
+  const output = e.outputBuffer.getChannelData(0);
 
-      // clamp to avoid runaway
-      lastOut = Math.max(-1, Math.min(1, lastOut));
+  for (let i = 0; i < output.length; i++) {
+    const white = Math.random() * 2 - 1;
 
-      output[i] = lastOut;
-    }
-  };
+    // Step 1: Brownian (random walk)
+    brownState += drift * white;
+
+    // Step 2: DC blocker (canonical form)
+    const x0 = brownState;
+    const y0 = x0 - x1 + R * y1;
+
+    // Step 3: shift filter state
+    x1 = x0;
+    y1 = y0;
+
+    output[i] = y0;
+  }
+};
 
   gainNode = audioCtx.createGain();
   gainNode.gain.value = gainSlider.value;
