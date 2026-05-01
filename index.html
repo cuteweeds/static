@@ -18,6 +18,7 @@
   .column {
     display: flex;
     flex-direction: column;
+    gap: 20px;
   }
   .panel {
     background: #1b1b1b;
@@ -43,13 +44,15 @@
     color: #4a90e2;
     text-decoration: none;
     font-weight:400;
-    font-size: 84%;
+    font-size: 80%;
   }
 </style>
 </head>
 <body>
 
 <div class="column">
+
+<canvas id="scope" width="300" height="120"></canvas>
 
   <div class="panel">
     <div class="control">
@@ -65,11 +68,12 @@
     <button id="toggle">Start</button>
   </div>
 
+  <a class="nav" href="advanced.html">Advanced</a>
   <div class="panel transparent nav">
-    <a class="nav" href="advanced.html">Advanced</a>
   </div>
 
 </div>
+
 
   
 
@@ -107,37 +111,42 @@ function initAudio() {
 
   processor = audioCtx.createScriptProcessor(1024, 1, 1);
 
-let brownState = 0; // integrator state (true Brownian)
-let x1 = 0;         // previous input to filter
-let y1 = 0;         // previous output from filter
-const R = 0.995;
+  let brownState = 0; // integrator state (true Brownian)
+  let x1 = 0;         // previous input to filter
+  let y1 = 0;         // previous output from filter
+  const R = 0.995;
 
-processor.onaudioprocess = (e) => {
-  const output = e.outputBuffer.getChannelData(0);
+  processor.onaudioprocess = (e) => {
+    const output = e.outputBuffer.getChannelData(0);
 
-  for (let i = 0; i < output.length; i++) {
-    const white = Math.random() * 2 - 1;
+    for (let i = 0; i < output.length; i++) {
+      const white = Math.random() * 2 - 1;
 
-    // Step 1: Brownian (random walk)
-    brownState += drift * white;
+      // Step 1: Brownian (random walk)
+      brownState += drift * white;
 
-    // Step 2: DC blocker (canonical form)
-    const x0 = brownState;
-    const y0 = x0 - x1 + R * y1;
+      // Step 2: DC blocker (canonical form)
+      const x0 = brownState;
+      const y0 = x0 - x1 + R * y1;
 
-    // Step 3: shift filter state
-    x1 = x0;
-    y1 = y0;
+      // Step 3: shift filter state
+      x1 = x0;
+      y1 = y0;
 
-    output[i] = y0;
-  }
-};
+      output[i] = y0;
+    }
+  };
 
   gainNode = audioCtx.createGain();
   gainNode.gain.value = gainSlider.value;
 
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+
   processor.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
+  gainNode.connect(analyser);
+  analyser.connect(audioCtx.destination);
+  setupAnalyserRef(analyser);
 }
 
 toggleBtn.onclick = async () => {
@@ -152,6 +161,42 @@ toggleBtn.onclick = async () => {
     toggleBtn.textContent = "Start";
   }
 };
+
+const canvas = document.getElementById('scope');
+const ctx = canvas.getContext('2d');
+
+let analyserRef; // will be assigned after init
+
+function setupAnalyserRef(node) {
+  analyserRef = node;
+}
+
+function draw() {
+  requestAnimationFrame(draw);
+  if (!analyserRef) return;
+
+  const data = new Uint8Array(analyserRef.frequencyBinCount);
+  analyserRef.getByteFrequencyData(data);
+
+  ctx.fillStyle = "#111";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = "#4a90e2";
+  ctx.beginPath();
+
+  for (let i = 0; i < data.length; i++) {
+    const x = Math.log10(1 + i) / Math.log10(data.length) * canvas.width;
+
+    const y = canvas.height - (Math.log10(1 + data[i]) / 2) * canvas.height;
+
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+
+  ctx.stroke();
+}
+
+draw();
 </script>
 </body>
 </html>
