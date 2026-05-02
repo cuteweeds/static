@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Noise Generator</title>
+<title>Static — Brownian Noise</title>
 <style>
 body {
   font-family: system-ui, sans-serif;
@@ -44,9 +44,9 @@ button {
   <div class="control">
   <label>Noise Type</label>
   <select id="type">
+  <option>brown</option>
   <option>white</option>
   <option>pink</option>
-  <option>brown</option>
   <option>blue</option>
   <option>violet</option>
   </select>
@@ -61,18 +61,18 @@ button {
   </div>
 
   <div class="control">
-  <label>HP Cutoff <span id="hpVal">50</span></label>
-  <input id="hp" type="range" min="20" max="20000" value="50">
+  <label>HP Cutoff <span id="hpVal">20</span></label>
+  <input id="hp" type="range" min="20" max="20000" value="20">
   </div>
 
   <div class="control">
-  <label>LP Cutoff <span id="lpVal">5000</span></label>
-  <input id="lp" type="range" min="20" max="20000" value="5000">
+  <label>LP Cutoff <span id="lpVal">800</span></label>
+  <input id="lp" type="range" min="20" max="20000" value="800">
   </div>
 
   <div class="control">
-  <label>Q <span id="qVal">1</span></label>
-  <input id="q" type="range" min="0.1" max="20" step="0.1" value="1">
+  <label>Q <span id="qVal">.85</span></label>
+  <input id="q" type="range" min="0.1" max="20" step="0.05" value=".85">
   </div>
 
   <div class="control">
@@ -86,8 +86,8 @@ button {
   </div>
 
   <div class="control">
-  <label>LFO Rate (Hz) <span id="rateVal">0.5</span></label>
-  <input id="rate" type="range" min="0.01" max="10" step="0.01" value="0.5">
+  <label>LFO Rate (Hz) <span id="rateVal">0.15</span></label>
+  <input id="rate" type="range" min="0.01" max="10" step="0.01" value="0.15">
   </div>
 
   <div class="control">
@@ -96,8 +96,8 @@ button {
   </div>
 
   <div class="control">
-  <label>Volume <span id="gainVal">0.2</span></label>
-  <input id="gain" type="range" min="0" max="1" step="0.01" value="0.2">
+  <label>Volume <span id="gainVal">1.0</span></label>
+  <input id="gain" type="range" min="0" max="1" step="0.01" value="1.0">
   </div>
 
   <div class="control">
@@ -124,7 +124,7 @@ let lfo, lfoGain;
 let running = false;
 
 let lastBrown = 0;
-let type = 'white';
+let type = 'brown';
 let drift = 0.02;
 
 let attack = 0.05, release = 0.1;
